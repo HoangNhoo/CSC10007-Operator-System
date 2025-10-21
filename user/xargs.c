@@ -36,6 +36,9 @@ xargs(char* cmd, char** args)
       if(cid == 0)
       {
         exec(cmd, new_argv);
+        for(int j = curr_argc; j < new_argc; j++)
+          free(new_argv[j]);
+        free(new_argv);
         exit(0);
       }
       else
@@ -58,8 +61,22 @@ xargs(char* cmd, char** args)
       }
       else
       {
+        if (i >= sizeof(buf) - 1) {
+          fprintf(2, "xargs: argument too long\n");
+          for (int j = curr_argc; j < new_argc; j++)
+            free(new_argv[j]);
+          free(new_argv);
+          exit(1);
+        }
         buf[i++] = c;
       }
+    }
+    if (new_argc + 1 >= curr_argc + 20) {
+      fprintf(2, "xargs: too many arguments\n");
+      for (int j = curr_argc; j < new_argc; j++)
+        free(new_argv[j]);
+      free(new_argv);
+      exit(1);
     }
   }
   free(new_argv);

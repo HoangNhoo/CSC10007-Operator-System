@@ -28,3 +28,4 @@ barrier
 profile.patch
 compile_commands.json
 .cache
+*.pdf
