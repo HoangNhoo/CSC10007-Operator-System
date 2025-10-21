@@ -25,7 +25,7 @@ barrier
 .DS_Store
 *.dSYM
 *.pcap
-profile.patch
+*.patch
 compile_commands.json
 .cache
 *.pdf
