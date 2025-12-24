@@ -489,8 +489,40 @@ copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
 
 #ifdef LAB_PGTBL
 void
+vmprintwalk(pagetable_t pagetable, int level)
+{
+  // Iterate through 512 entries in the page table
+  for (int i = 0; i < 512; i++) {
+    pte_t pte = pagetable[i];
+
+    // Only process PTEs that have the valid bit set
+    if (pte & PTE_V) {
+      // Print indentation based on RISC-V page table level
+      // level=2 (root): print 1x ".." → " ..0:"
+      // level=1: print 2x ".." → " .. ..0:"
+      // level=0 (leaf): print 3x ".." → " .. .. ..0:"
+      for (int j = 0; j < 3 - level; j++) {
+        printf(" ..");
+      }
+
+      // Print the index, PTE value, and physical address
+      uint64 pa = PTE2PA(pte);
+      printf("%d: pte %p pa %p\n", i, (void*)pte, (void*)pa);
+
+      // Check if this PTE is a leaf page or not
+      // If it does NOT have R/W/X bits -> it's an intermediate page table -> recurse
+      if ((pte & (PTE_R | PTE_W | PTE_X)) == 0) {
+        // This PTE points to a lower-level page table
+        uint64 child = PTE2PA(pte);
+        vmprintwalk((pagetable_t)child, level - 1);
+      }
+    }
+  }
+}
+void
 vmprint(pagetable_t pagetable) {
-  // your code here
+  printf("page table %p\n", pagetable);
+  vmprintwalk(pagetable, 2);  // Start from RISC-V level 2 (root page table)
 }
 #endif
 

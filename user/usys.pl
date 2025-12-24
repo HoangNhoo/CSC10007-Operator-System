@@ -14,7 +14,7 @@ sub entry {
     print " ecall\n";
     print " ret\n";
 }
-	
+
 entry("fork");
 entry("exit");
 entry("wait");
@@ -42,3 +42,4 @@ entry("send");
 entry("recv");
 entry("pgpte");
 entry("kpgtbl");
+entry("pgaccess");
