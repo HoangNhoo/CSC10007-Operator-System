@@ -166,7 +166,6 @@ int             uartgetc(void);
 // vm.c
 void            kvminit(void);
 void            kvminithart(void);
-void            vmprint(pagetable_t); // prototype declared for vmprint in vm.c
 void            kvmmap(pagetable_t, uint64, uint64, uint64, int);
 int             mappages(pagetable_t, uint64, uint64, uint64, int);
 pagetable_t     uvmcreate(void);
@@ -182,12 +181,8 @@ uint64          walkaddr(pagetable_t, uint64);
 int             copyout(pagetable_t, uint64, char *, uint64);
 int             copyin(pagetable_t, char *, uint64, uint64);
 int             copyinstr(pagetable_t, char *, uint64, uint64);
-#if defined(LAB_PGTBL) || defined(SOL_MMAP)
-void            vmprint(pagetable_t);
-#endif
-#ifdef LAB_PGTBL
+void            vmprint(pagetable_t); // prototype declared for vmprint in vm.c
 pte_t*          pgpte(pagetable_t, uint64);
-#endif
 
 // plic.c
 void            plicinit(void);

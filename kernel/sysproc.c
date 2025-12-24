@@ -124,10 +124,62 @@ sys_uptime(void)
   return xticks;
 }
 
-// Stub for pgaccess syscall (not implemented yet)
+// System call: pgaccess(void *base, int len, void *mask)
+// Reports which pages have been accessed by checking PTE_A bit.
 uint64
 sys_pgaccess(void)
 {
-  // TODO: Implement pgaccess syscall
-  return -1;
+  uint64 base;           // Starting virtual address
+  int len;               // Number of pages to check
+  uint64 user_mask_addr; // User buffer address for result bitmask
+  struct proc *p = myproc();
+  
+  // Parse arguments from user space
+  argaddr(0, &base);
+  argint(1, &len);
+  argaddr(2, &user_mask_addr);
+  
+  // Validate arguments - maximum 64 pages (64-bit bitmask limit)
+  if (len < 0 || len > 64) {
+    return -1;
+  }
+  
+  // Temporary kernel buffer to store bitmask
+  // Each bit represents one page: bit i -> page i was accessed
+  uint64 bitmask = 0;
+  
+  // Check each page for access bit
+  for (int i = 0; i < len; i++) {
+    // Calculate virtual address of current page
+    uint64 va = base + i * PGSIZE;
+    
+    // Walk page table to find PTE for this virtual address
+    // walk() returns pointer to PTE, or 0 if page not mapped
+    pte_t *pte = walk(p->pagetable, va, 0);
+    
+    if (pte == 0) {
+      // Page not mapped - skip it
+      continue;
+    }
+    
+    // Check if PTE is valid
+    if (*pte & PTE_V) {
+      // Check if access bit (PTE_A) is set by hardware
+      if (*pte & PTE_A) {
+        // Page was accessed - set corresponding bit in bitmask
+        bitmask |= (1L << i);
+        
+        // CRITICAL: Clear the access bit for next check
+        // Without this, the bit stays set forever!
+        *pte &= ~PTE_A;
+      }
+    }
+  }
+  
+  // Copy bitmask from kernel space to user space
+  if (copyout(p->pagetable, user_mask_addr, (char *)&bitmask, sizeof(bitmask)) < 0) {
+    return -1;
+  }
+  
+  return 0;  // Success
 }
