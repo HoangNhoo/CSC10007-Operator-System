@@ -166,6 +166,8 @@ clockintr()
   if(cpuid() == 0){
     acquire(&tickslock);
     ticks++;
+    if(ticks % 50 == 0)  // Every 5 seconds (50 ticks * 0.1s)
+      update_loadavg();
     wakeup(&ticks);
     release(&tickslock);
   }

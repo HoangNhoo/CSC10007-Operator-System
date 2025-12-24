@@ -106,3 +106,8 @@ struct proc {
   char name[16];               // Process name (debugging)
   int trace_mask;               // Trace mask for system calls
 };
+
+struct loadavg {
+  struct spinlock lock;
+  uint64 value;
+};

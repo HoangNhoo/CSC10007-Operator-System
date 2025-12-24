@@ -1,8 +1,0 @@
-This file is just for local grade
-
-usertrap()
-p->frame->a7 = 0x7
-user mode
-a3
-
-

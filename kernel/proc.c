@@ -29,6 +29,21 @@ struct spinlock wait_lock;
 // Allocate a page for each process's kernel stack.
 // Map it high in memory, followed by an invalid
 // guard page.
+
+struct loadavg loadavg;
+
+// Fixed-point load average constants (Linux-style)
+#define FSHIFT		11		/* nr of bits of precision */
+#define FIXED_1		(1<<FSHIFT)	/* 1.0 as fixed-point */
+#define LOAD_FREQ	(5*HZ+1)	/* 5 sec intervals */
+#define EXP_1		1884		/* 1/exp(5sec/1min) as fixed-point */
+#define EXP_5		2014		/* 1/exp(5sec/5min) */
+#define EXP_15		2037		/* 1/exp(5sec/15min) */
+
+// Helper macros for load average
+#define LOAD_INT(x) ((x) >> FSHIFT)
+#define LOAD_FRAC(x) LOAD_INT(((x) & (FIXED_1-1)) * 100)
+
 void
 proc_mapstacks(pagetable_t kpgtbl)
 {
@@ -56,6 +71,8 @@ procinit(void)
       p->state = UNUSED;
       p->kstack = KSTACK((int) (p - proc));
   }
+  initlock(&loadavg.lock, "loadavg");
+  loadavg.value = 0;
 }
 
 // Must be called with interrupts disabled,
@@ -712,4 +729,62 @@ proc_count(void)
   }
   
   return count;
+}
+
+uint64
+get_instant_load(void)
+{
+  struct proc *p;
+  uint64 count = 0;
+  
+  for(p = proc; p < &proc[NPROC]; p++) {
+    acquire(&p->lock);
+    if(p->state == RUNNABLE || p->state == RUNNING) {
+      count++;
+    }
+    release(&p->lock);
+  }
+  
+  return count;
+}
+
+// Linux-style load average calculation
+// Formula: newload = load * exp + active * (FIXED_1 - exp)
+// This implements exponentially weighted moving average with fixed-point math
+static uint64
+calc_load(uint64 load, uint64 exp, uint64 active)
+{
+  uint64 newload;
+
+  newload = load * exp + active * (FIXED_1 - exp);
+  
+  if (active >= load)
+    newload += FIXED_1 - 1;
+
+  return newload / FIXED_1;
+}
+
+void
+update_loadavg(void)
+{
+  // Get current number of runnable/running processes
+  uint64 active = get_instant_load();
+  
+  active = active * FIXED_1;
+  
+  acquire(&loadavg.lock);
+  
+  loadavg.value = calc_load(loadavg.value, EXP_1, active);
+  
+  release(&loadavg.lock);
+}
+
+uint64
+get_loadavg(void)
+{
+  uint64 value;
+  acquire(&loadavg.lock);
+  value = loadavg.value;
+  release(&loadavg.lock);
+  return (value * 100) >> FSHIFT;
 }

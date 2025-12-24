@@ -141,6 +141,17 @@ void testbad() {
   }
 }
 
+void
+testCSC()
+{
+  struct sysinfo info;
+  sinfo(&info);
+
+  printf("freemem: %ld bytes\n", info.freemem);
+  printf("nproc:   %ld processes\n", info.nproc);
+  printf("loadavg: %ld \n", info.loadavg);
+}
+
 int
 main(int argc, char *argv[])
 {
@@ -148,6 +159,7 @@ main(int argc, char *argv[])
   testcall();
   testmem();
   testproc();
+  testCSC();
   printf("sysinfotest: OK\n");
   exit(0);
 }
