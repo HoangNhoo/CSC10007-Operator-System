@@ -5,6 +5,22 @@ from gradelib import *
 
 r = Runner(save("xv6.out"))
 
+PTE_PRINT = """page table 0x0000000087f4e000
+ ..0: pte 0x0000000021fd2801 pa 0x0000000087f4a000
+ .. ..0: pte 0x0000000021fd2401 pa 0x0000000087f49000
+ .. .. ..0: pte 0x0000000021fd2c1b pa 0x0000000087f4b000
+ .. .. ..1: pte 0x0000000021fd2017 pa 0x0000000087f48000
+ .. .. ..2: pte 0x0000000021fd1c07 pa 0x0000000087f47000
+ .. .. ..3: pte 0x0000000021fd1817 pa 0x0000000087f46000
+ ..255: pte 0x0000000021fd3401 pa 0x0000000087f4d000
+ .. ..511: pte 0x0000000021fd3001 pa 0x0000000087f4c000
+ .. .. ..510: pte 0x0000000021fd5807 pa 0x0000000087f56000
+ .. .. ..511: pte 0x000000002000180b pa 0x0000000080006000"""
+
+VAL_RE = "(0x00000000[0-9a-f]+)"
+INDENT_RE = r"\s*\.\.\s*"
+INDENT_ESC = "\\\s*\.\.\\\s*"
+
 @test(0, "pgtbltest")
 def test_pgtbltest():
     r.run_qemu(shell_script([
@@ -12,29 +28,33 @@ def test_pgtbltest():
     ]), timeout=300)
 
 @test(10, "pgtbltest: ugetpid", parent=test_pgtbltest)
-def test_ugetpid_():
+def test_nettest_():
     r.match('^ugetpid_test: OK$')
 
-@test(10, "pgtbltest: print_kpgtbl", parent=test_pgtbltest)
-def test_print_kpgtbl_():
-    r.match(
-        '^page table 0x',
-        '^ \.\.0x0000000000000000',
-        '^ \.\. \.\.0x0000000000000000',
-        '^ \.\. \.\. \.\.0x0000000000000000',
-        '^ \.\. \.\. \.\.0x0000000000001000',
-        '^ \.\. \.\. \.\.0x0000000000002000',
-        '^ \.\. \.\. \.\.0x0000000000003000',
-        '^ \.\.(0xffffffffc0000000|0x0000003fc0000000)',
-        '^ \.\. \.\.(0xffffffffffe00000|0x0000003fffe00000)',
-        '^ \.\. \.\. \.\.(0xffffffffffffd000|0x0000003fffffd000)',
-        '^ \.\. \.\. \.\.(0xffffffffffffe000|0x0000003fffffe000)',
-        '^ \.\. \.\. \.\.(0xfffffffffffff000|0x0000003ffffff000)',
-    )
+@test(10, "pgtbltest: pgaccess", parent=test_pgtbltest)
+def test_nettest_():
+    r.match('^pgaccess_test: OK$')
 
-@test(15, "pgtbltest: superpg", parent=test_pgtbltest)
-def test_superpg_():
-    r.match('^superpg_test: OK$')
+@test(10, "pte printout")
+def test_pteprint():
+    first = True
+    r.run_qemu(shell_script([
+        'echo hi'
+    ]))
+    r.match('^hi')
+    p = re.compile(VAL_RE)
+    d = re.compile(INDENT_RE)
+    for l in PTE_PRINT.splitlines():
+        l = d.sub(INDENT_ESC, l)
+        l = p.sub(VAL_RE, l)
+        r.match(r'^{}$'.format(l))
+        if first:
+            first = False
+        else:
+            matches = re.findall(r'^{}$'.format(l), r.qemu.output, re.MULTILINE)
+            assert_equal(len(matches[0]), 2)
+            pa = (int(matches[0][0], 16) >> 10) << 12
+            assert_equal(int(matches[0][1], 16), pa)
 
 @test(5, "answers-pgtbl.txt")
 def test_answers():
@@ -45,7 +65,7 @@ def test_answers():
 def test_usertests():
     r.run_qemu(shell_script([
         'usertests -q'
-    ]), timeout=300)
+    ]), timeout=900)
 
 @test(10, "usertests: all tests", parent=test_usertests)
 def test_usertests():

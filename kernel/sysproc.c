@@ -123,3 +123,11 @@ sys_uptime(void)
   release(&tickslock);
   return xticks;
 }
+
+// Stub for pgaccess syscall (not implemented yet)
+uint64
+sys_pgaccess(void)
+{
+  // TODO: Implement pgaccess syscall
+  return -1;
+}

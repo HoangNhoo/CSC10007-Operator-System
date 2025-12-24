@@ -486,14 +486,37 @@ copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
   }
 }
 
+void vmprintwalk(pagetable_t pagetable, int level) {
+  // Iterate through 512 entries in the page table
+  for (int i = 0; i < 512; i++) {
+    pte_t pte = pagetable[i];
 
-#ifdef LAB_PGTBL
-void
-vmprint(pagetable_t pagetable) {
-  // your code here
+    // Only process PTEs that have the valid bit set
+    if (pte & PTE_V) {
+      // Print indentation based on level (each level adds ".." with space before each)
+      for (int j = 0; j < level; j++) {
+        printf(" ..");
+      }
+
+      // Print the index, PTE value, and physical address
+      uint64 pa = PTE2PA(pte);
+      printf("%d: pte %p pa %p\n", i, (void*)pte, (void*)pa);
+
+      // Check if this PTE is a leaf page or not
+      // If it does NOT have R/W/X bits -> it's an intermediate page table -> recurse
+      if ((pte & (PTE_R | PTE_W | PTE_X)) == 0) {
+        // This PTE points to a lower-level page table
+        uint64 child = PTE2PA(pte);
+        vmprintwalk((pagetable_t)child, level + 1);
+      }
+    }
+  }
 }
-#endif
 
+void vmprint(pagetable_t pagetable) {
+  printf("page table %p\n", pagetable);
+  vmprintwalk(pagetable, 1);
+}
 
 
 #ifdef LAB_PGTBL
