@@ -493,8 +493,11 @@ void vmprintwalk(pagetable_t pagetable, int level) {
 
     // Only process PTEs that have the valid bit set
     if (pte & PTE_V) {
-      // Print indentation based on level (each level adds ".." with space before each)
-      for (int j = 0; j < level; j++) {
+      // Print indentation based on RISC-V page table level
+      // level=2 (root): print 1x ".." → " ..0:"
+      // level=1: print 2x ".." → " .. ..0:"
+      // level=0 (leaf): print 3x ".." → " .. .. ..0:"
+      for (int j = 0; j < 3 - level; j++) {
         printf(" ..");
       }
 
@@ -507,7 +510,7 @@ void vmprintwalk(pagetable_t pagetable, int level) {
       if ((pte & (PTE_R | PTE_W | PTE_X)) == 0) {
         // This PTE points to a lower-level page table
         uint64 child = PTE2PA(pte);
-        vmprintwalk((pagetable_t)child, level + 1);
+        vmprintwalk((pagetable_t)child, level - 1);
       }
     }
   }
@@ -515,7 +518,7 @@ void vmprintwalk(pagetable_t pagetable, int level) {
 
 void vmprint(pagetable_t pagetable) {
   printf("page table %p\n", pagetable);
-  vmprintwalk(pagetable, 1);
+  vmprintwalk(pagetable, 2);  // Start from RISC-V level 2 (root page table)
 }
 
 
