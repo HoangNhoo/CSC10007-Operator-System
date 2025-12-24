@@ -486,7 +486,11 @@ copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
   }
 }
 
-void vmprintwalk(pagetable_t pagetable, int level) {
+
+#ifdef LAB_PGTBL
+void
+vmprintwalk(pagetable_t pagetable, int level)
+{
   // Iterate through 512 entries in the page table
   for (int i = 0; i < 512; i++) {
     pte_t pte = pagetable[i];
@@ -515,11 +519,13 @@ void vmprintwalk(pagetable_t pagetable, int level) {
     }
   }
 }
-
-void vmprint(pagetable_t pagetable) {
+void
+vmprint(pagetable_t pagetable) {
   printf("page table %p\n", pagetable);
   vmprintwalk(pagetable, 2);  // Start from RISC-V level 2 (root page table)
 }
+#endif
+
 
 
 #ifdef LAB_PGTBL
