@@ -1,0 +1,458 @@
+diff --git a/.gitignore b/.gitignore
+index 6547070..11d0677 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -25,5 +25,3 @@ barrier
+ .DS_Store
+ *.dSYM
+ *.pcap
+-.cache/
+-compile_commands.json
+diff --git a/Makefile b/Makefile
+index b90c442..74e454f 100644
+--- a/Makefile
++++ b/Makefile
+@@ -194,8 +194,8 @@ UPROGS=\
+ 	$U/_grind\
+ 	$U/_wc\
+ 	$U/_zombie\
+-	$U/_trace\
+-	$U/_sysinfotest\
++
++
+ 
+ 
+ ifeq ($(LAB),syscall)
+diff --git a/kernel/defs.h b/kernel/defs.h
+index 0517e5e..d1b6bb9 100644
+--- a/kernel/defs.h
++++ b/kernel/defs.h
+@@ -63,7 +63,6 @@ void            ramdiskrw(struct buf*);
+ void*           kalloc(void);
+ void            kfree(void *);
+ void            kinit(void);
+-uint64          freemem_count(void);
+ 
+ // log.c
+ void            initlog(int, struct superblock*);
+@@ -107,10 +106,6 @@ void            yield(void);
+ int             either_copyout(int user_dst, uint64 dst, void *src, uint64 len);
+ int             either_copyin(void *dst, int user_src, uint64 src, uint64 len);
+ void            procdump(void);
+-uint64          proc_count(void);
+-uint64          get_instant_load(void);
+-void            update_loadavg(void);
+-uint64          get_loadavg(void);
+ 
+ // swtch.S
+ void            swtch(struct context*, struct context*);
+diff --git a/kernel/kalloc.c b/kernel/kalloc.c
+index e7ff888..5247b91 100644
+--- a/kernel/kalloc.c
++++ b/kernel/kalloc.c
+@@ -91,21 +91,3 @@ kalloc(void)
+   return (void*)r;
+ }
+ 
+-// Count the amount of free memory in bytes
+-uint64
+-freemem_count(void)
+-{
+-  struct run *r;
+-  uint64 count = 0;
+-  
+-  acquire(&kmem.lock);
+-  r = kmem.freelist;
+-  while(r) {
+-    count += PGSIZE;
+-    r = r->next;
+-  }
+-  release(&kmem.lock);
+-  
+-  return count;
+-}
+-
+diff --git a/kernel/proc.c b/kernel/proc.c
+index 5b6bc71..130d9ce 100644
+--- a/kernel/proc.c
++++ b/kernel/proc.c
+@@ -29,21 +29,6 @@ struct spinlock wait_lock;
+ // Allocate a page for each process's kernel stack.
+ // Map it high in memory, followed by an invalid
+ // guard page.
+-
+-struct loadavg loadavg;
+-
+-// Fixed-point load average constants (Linux-style)
+-#define FSHIFT		11		/* nr of bits of precision */
+-#define FIXED_1		(1<<FSHIFT)	/* 1.0 as fixed-point */
+-#define LOAD_FREQ	(5*HZ+1)	/* 5 sec intervals */
+-#define EXP_1		1884		/* 1/exp(5sec/1min) as fixed-point */
+-#define EXP_5		2014		/* 1/exp(5sec/5min) */
+-#define EXP_15		2037		/* 1/exp(5sec/15min) */
+-
+-// Helper macros for load average
+-#define LOAD_INT(x) ((x) >> FSHIFT)
+-#define LOAD_FRAC(x) LOAD_INT(((x) & (FIXED_1-1)) * 100)
+-
+ void
+ proc_mapstacks(pagetable_t kpgtbl)
+ {
+@@ -71,8 +56,6 @@ procinit(void)
+       p->state = UNUSED;
+       p->kstack = KSTACK((int) (p - proc));
+   }
+-  initlock(&loadavg.lock, "loadavg");
+-  loadavg.value = 0;
+ }
+ 
+ // Must be called with interrupts disabled,
+@@ -327,8 +310,6 @@ fork(void)
+ 
+   safestrcpy(np->name, p->name, sizeof(p->name));
+ 
+-  np->trace_mask = p->trace_mask;
+-
+   pid = np->pid;
+ 
+   release(&np->lock);
+@@ -712,79 +693,3 @@ procdump(void)
+     printf("\n");
+   }
+ }
+-
+-// Count the number of processes not in UNUSED state
+-uint64
+-proc_count(void)
+-{
+-  struct proc *p;
+-  uint64 count = 0;
+-  
+-  for(p = proc; p < &proc[NPROC]; p++) {
+-    acquire(&p->lock);
+-    if(p->state != UNUSED) {
+-      count++;
+-    }
+-    release(&p->lock);
+-  }
+-  
+-  return count;
+-}
+-
+-uint64
+-get_instant_load(void)
+-{
+-  struct proc *p;
+-  uint64 count = 0;
+-  
+-  for(p = proc; p < &proc[NPROC]; p++) {
+-    acquire(&p->lock);
+-    if(p->state == RUNNABLE || p->state == RUNNING) {
+-      count++;
+-    }
+-    release(&p->lock);
+-  }
+-  
+-  return count;
+-}
+-
+-// Linux-style load average calculation
+-// Formula: newload = load * exp + active * (FIXED_1 - exp)
+-// This implements exponentially weighted moving average with fixed-point math
+-static uint64
+-calc_load(uint64 load, uint64 exp, uint64 active)
+-{
+-  uint64 newload;
+-
+-  newload = load * exp + active * (FIXED_1 - exp);
+-  
+-  if (active >= load)
+-    newload += FIXED_1 - 1;
+-
+-  return newload / FIXED_1;
+-}
+-
+-void
+-update_loadavg(void)
+-{
+-  // Get current number of runnable/running processes
+-  uint64 active = get_instant_load();
+-  
+-  active = active * FIXED_1;
+-  
+-  acquire(&loadavg.lock);
+-  
+-  loadavg.value = calc_load(loadavg.value, EXP_1, active);
+-  
+-  release(&loadavg.lock);
+-}
+-
+-uint64
+-get_loadavg(void)
+-{
+-  uint64 value;
+-  acquire(&loadavg.lock);
+-  value = loadavg.value;
+-  release(&loadavg.lock);
+-  return (value * 100) >> FSHIFT;
+-}
+diff --git a/kernel/proc.h b/kernel/proc.h
+index 325af83..d021857 100644
+--- a/kernel/proc.h
++++ b/kernel/proc.h
+@@ -104,10 +104,4 @@ struct proc {
+   struct file *ofile[NOFILE];  // Open files
+   struct inode *cwd;           // Current directory
+   char name[16];               // Process name (debugging)
+-  int trace_mask;               // Trace mask for system calls
+-};
+-
+-struct loadavg {
+-  struct spinlock lock;
+-  uint64 value;
+ };
+diff --git a/kernel/syscall.c b/kernel/syscall.c
+index c6c48aa..ed65409 100644
+--- a/kernel/syscall.c
++++ b/kernel/syscall.c
+@@ -101,8 +101,6 @@ extern uint64 sys_unlink(void);
+ extern uint64 sys_link(void);
+ extern uint64 sys_mkdir(void);
+ extern uint64 sys_close(void);
+-extern uint64 sys_trace(void);
+-extern uint64 sys_sysinfo(void);
+ 
+ // An array mapping syscall numbers from syscall.h
+ // to the function that handles the system call.
+@@ -128,62 +126,8 @@ static uint64 (*syscalls[])(void) = {
+ [SYS_link]    sys_link,
+ [SYS_mkdir]   sys_mkdir,
+ [SYS_close]   sys_close,
+-[SYS_trace]   sys_trace,
+-[SYS_sysinfo] sys_sysinfo,
+ };
+ 
+-static uint64 syscall_argcs[] = {
+-[SYS_fork]    0,
+-[SYS_exit]    1,
+-[SYS_wait]    1,
+-[SYS_pipe]    1,
+-[SYS_read]    3,
+-[SYS_kill]    1,
+-[SYS_exec]    2,
+-[SYS_fstat]   2,
+-[SYS_chdir]   1,
+-[SYS_dup]     1,
+-[SYS_getpid]  0,
+-[SYS_sbrk]    1,
+-[SYS_sleep]   1,
+-[SYS_uptime]  0,
+-[SYS_open]    2,
+-[SYS_write]   3,
+-[SYS_mknod]   3,
+-[SYS_unlink]  1,
+-[SYS_link]    2,
+-[SYS_mkdir]   1,
+-[SYS_close]   1,
+-[SYS_trace]   1,
+-};
+-
+-static char *syscall_names[] = {
+-[SYS_fork]    "fork",
+-[SYS_exit]    "exit",
+-[SYS_wait]    "wait",
+-[SYS_pipe]    "pipe",
+-[SYS_read]    "read",
+-[SYS_kill]    "kill",
+-[SYS_exec]    "exec",
+-[SYS_fstat]   "fstat",
+-[SYS_chdir]   "chdir",
+-[SYS_dup]     "dup",
+-[SYS_getpid]  "getpid",
+-[SYS_sbrk]    "sbrk",
+-[SYS_sleep]   "sleep",
+-[SYS_uptime]  "uptime",
+-[SYS_open]    "open",
+-[SYS_write]   "write",
+-[SYS_mknod]   "mknod",
+-[SYS_unlink]  "unlink",
+-[SYS_link]    "link",
+-[SYS_mkdir]   "mkdir",
+-[SYS_close]   "close",
+-[SYS_trace]   "trace",
+-[SYS_sysinfo] "sysinfo",
+-};
+-
+-
+ void
+ syscall(void)
+ {
+@@ -192,24 +136,9 @@ syscall(void)
+ 
+   num = p->trapframe->a7;
+   if(num > 0 && num < NELEM(syscalls) && syscalls[num]) {
+-    int tmp = p->trapframe->a0; // Save the original a0 arg value
+     // Use num to lookup the system call function for num, call it,
+     // and store its return value in p->trapframe->a0
+     p->trapframe->a0 = syscalls[num]();
+-    if (p->trace_mask & (1 << num)) {
+-      printf("%d: syscall %s -> %ld", p->pid, syscall_names[num], p->trapframe->a0);
+-      int argc = syscall_argcs[num];
+-      if (argc > 0) {
+-        printf(", args: ");
+-      }
+-      for (int i = 0; i < argc; i++) {
+-        if (i > 0) {
+-          printf(", ");
+-        }
+-        printf("%d", (int)(i == 0 ? tmp : argraw(i)));
+-      }
+-      printf("\n");
+-    }
+   } else {
+     printf("%d %s: unknown sys call %d\n",
+             p->pid, p->name, num);
+diff --git a/kernel/syscall.h b/kernel/syscall.h
+index 0dfedc7..bc5f356 100644
+--- a/kernel/syscall.h
++++ b/kernel/syscall.h
+@@ -20,5 +20,3 @@
+ #define SYS_link   19
+ #define SYS_mkdir  20
+ #define SYS_close  21
+-#define SYS_trace  22
+-#define SYS_sysinfo 23
+diff --git a/kernel/sysfile.c b/kernel/sysfile.c
+index 1e0cc4f..16b668c 100644
+--- a/kernel/sysfile.c
++++ b/kernel/sysfile.c
+@@ -15,7 +15,6 @@
+ #include "sleeplock.h"
+ #include "file.h"
+ #include "fcntl.h"
+-#include "sysinfo.h"
+ 
+ // Fetch the nth word-sized system call argument as a file descriptor
+ // and return both the descriptor and the corresponding struct file.
+@@ -504,22 +503,3 @@ sys_pipe(void)
+   }
+   return 0;
+ }
+-
+-uint64
+-sys_sysinfo(void)
+-{
+-  uint64 addr;
+-  struct sysinfo info;
+-  struct proc *p = myproc();
+-  
+-  argaddr(0, &addr);
+-  
+-  info.freemem = freemem_count();
+-  info.nproc = proc_count();
+-  info.loadavg = get_loadavg();
+-  
+-  if(copyout(p->pagetable, addr, (char *)&info, sizeof(info)) < 0)
+-    return -1;
+-  
+-  return 0;
+-}
+diff --git a/kernel/sysinfo.h b/kernel/sysinfo.h
+index 38a89ea..fb878e6 100644
+--- a/kernel/sysinfo.h
++++ b/kernel/sysinfo.h
+@@ -1,5 +1,4 @@
+ struct sysinfo {
+   uint64 freemem;   // amount of free memory (bytes)
+   uint64 nproc;     // number of process
+-  uint64 loadavg;   // load average (scaled by 100)
+ };
+diff --git a/kernel/sysproc.c b/kernel/sysproc.c
+index c79bd23..3b4d5bd 100644
+--- a/kernel/sysproc.c
++++ b/kernel/sysproc.c
+@@ -91,12 +91,3 @@ sys_uptime(void)
+   release(&tickslock);
+   return xticks;
+ }
+-
+-uint64
+-sys_trace(void)
+-{
+-  int mask;
+-  argint(0, &mask);
+-  myproc()->trace_mask = mask;
+-  return 0;
+-}
+diff --git a/kernel/trap.c b/kernel/trap.c
+index 32de8d3..d454a7d 100644
+--- a/kernel/trap.c
++++ b/kernel/trap.c
+@@ -166,8 +166,6 @@ clockintr()
+   if(cpuid() == 0){
+     acquire(&tickslock);
+     ticks++;
+-    if(ticks % 50 == 0)  // Every 5 seconds (50 ticks * 0.1s)
+-      update_loadavg();
+     wakeup(&ticks);
+     release(&tickslock);
+   }
+diff --git a/user/sysinfotest.c b/user/sysinfotest.c
+index 21eea96..a92d10a 100644
+--- a/user/sysinfotest.c
++++ b/user/sysinfotest.c
+@@ -141,17 +141,6 @@ void testbad() {
+   }
+ }
+ 
+-void
+-testCSC()
+-{
+-  struct sysinfo info;
+-  sinfo(&info);
+-
+-  printf("freemem: %ld bytes\n", info.freemem);
+-  printf("nproc:   %ld processes\n", info.nproc);
+-  printf("loadavg: %ld \n", info.loadavg);
+-}
+-
+ int
+ main(int argc, char *argv[])
+ {
+@@ -159,7 +148,6 @@ main(int argc, char *argv[])
+   testcall();
+   testmem();
+   testproc();
+-  testCSC();
+   printf("sysinfotest: OK\n");
+   exit(0);
+ }
+diff --git a/user/user.h b/user/user.h
+index 6d83095..f16fe27 100644
+--- a/user/user.h
++++ b/user/user.h
+@@ -1,5 +1,4 @@
+ struct stat;
+-struct sysinfo;
+ 
+ // system calls
+ int fork(void);
+@@ -23,8 +22,6 @@ int getpid(void);
+ char* sbrk(int);
+ int sleep(int);
+ int uptime(void);
+-int trace(int);
+-int sysinfo(struct sysinfo*);
+ 
+ // ulib.c
+ int stat(const char*, struct stat*);
+diff --git a/user/usys.pl b/user/usys.pl
+index bc109fd..01e426e 100755
+--- a/user/usys.pl
++++ b/user/usys.pl
+@@ -36,5 +36,3 @@ entry("getpid");
+ entry("sbrk");
+ entry("sleep");
+ entry("uptime");
+-entry("trace");
+-entry("sysinfo");
